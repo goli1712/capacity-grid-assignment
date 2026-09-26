@@ -36,20 +36,41 @@ export function RangeControls({ range, onChange }: Props) {
 
   return (
     <div className="range-controls">
-      <div className="range-step" role="group" aria-label="Move by week">
+      <div className="range-stepper">
         <button
           type="button"
+          className="range-arrow"
           aria-label="Previous week"
           disabled={!rangeValid}
           onClick={() => onChange(shiftRange(range, -1))}
         >
           ‹
         </button>
-        <button type="button" onClick={reset}>
-          Today
-        </button>
+        <div className="range-dates">
+          <label>
+            From{' '}
+            <input
+              type="date"
+              value={draft.from}
+              aria-invalid={error !== null}
+              aria-describedby={errorId}
+              onChange={(e) => edit({ ...draft, from: e.target.value })}
+            />
+          </label>
+          <label>
+            To{' '}
+            <input
+              type="date"
+              value={draft.to}
+              aria-invalid={error !== null}
+              aria-describedby={errorId}
+              onChange={(e) => edit({ ...draft, to: e.target.value })}
+            />
+          </label>
+        </div>
         <button
           type="button"
+          className="range-arrow"
           aria-label="Next week"
           disabled={!rangeValid}
           onClick={() => onChange(shiftRange(range, 1))}
@@ -57,26 +78,9 @@ export function RangeControls({ range, onChange }: Props) {
           ›
         </button>
       </div>
-      <label>
-        From{' '}
-        <input
-          type="date"
-          value={draft.from}
-          aria-invalid={error !== null}
-          aria-describedby={errorId}
-          onChange={(e) => edit({ ...draft, from: e.target.value })}
-        />
-      </label>
-      <label>
-        To{' '}
-        <input
-          type="date"
-          value={draft.to}
-          aria-invalid={error !== null}
-          aria-describedby={errorId}
-          onChange={(e) => edit({ ...draft, to: e.target.value })}
-        />
-      </label>
+      <button type="button" className="range-today" onClick={reset}>
+        Today
+      </button>
       <p id={errorId} className="range-error" aria-live="polite">
         {error}
       </p>

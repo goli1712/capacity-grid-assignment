@@ -34,8 +34,12 @@ function today(): string {
   return format(new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())))
 }
 
+export function currentWeek(): string {
+  return startOfWeek(today())
+}
+
 export function defaultRange(): Range {
-  const from = startOfWeek(today())
+  const from = currentWeek()
   return { from, to: endOfWeek(addDays(from, 7 * 7)) }
 }
 
@@ -56,6 +60,30 @@ const weekLabel = new Intl.DateTimeFormat(undefined, {
 export function formatWeek(monday: string): { label: string; year: number } {
   const date = parse(monday)
   return { label: weekLabel.format(date), year: date.getUTCFullYear() }
+}
+
+const workWeekLabel = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC',
+})
+
+// "Mon 5 Jan – Fri 9 Jan 2026": the working days of the week starting on `monday`.
+export function formatWorkWeek(monday: string): string {
+  return workWeekLabel.formatRange(parse(monday), parse(addDays(monday, 4)))
+}
+
+const rangeLabel = new Intl.DateTimeFormat(undefined, {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC',
+})
+
+export function formatRange({ from, to }: Range): string {
+  return rangeLabel.formatRange(parse(from), parse(to))
 }
 
 const MAX_WEEKS = 26

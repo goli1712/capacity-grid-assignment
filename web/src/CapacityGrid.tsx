@@ -1,33 +1,77 @@
-import { memo, useDeferredValue, useMemo, useRef, useState, type ReactNode, type Ref } from 'react'
+import {
+  memo,
+  useDeferredValue,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+  type Ref,
+} from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { PersonCapacity } from './api'
 import { CapacityEditor } from './CapacityEditor'
 import { capacityQuery, useSaveCapacity, useUnresolvedSaves, type SaveFailure } from './capacityCache'
 import { hoursFormat } from './format'
-import { expandRange, formatWeek, mondaysIn, sameRange, type Range } from './weeks'
+import { STATUS_TEXT, statusOf, type Status } from './status'
+import { WeekTooltip, type CellPosition, type WeekTooltipHandle } from './WeekTooltip'
+import { currentWeek, expandRange, formatWeek, mondaysIn, sameRange, type Range } from './weeks'
 
 type Props = {
   from: string
   to: string
 }
 
-type Status = 'over' | 'full' | 'under'
-
-// Strictly greater: any allocation against zero capacity is over.
-function statusOf(allocated: number, capacity: number): Status {
-  if (allocated > capacity) return 'over'
-  if (allocated === capacity) return 'full'
-  return 'under'
-}
-
 function isOverAllocated(person: PersonCapacity): boolean {
   return person.allocated.some((allocated) => statusOf(allocated, person.capacity) === 'over')
 }
 
-const STATUS_TEXT: Record<Status, string> = {
-  over: 'Over-allocated',
-  full: 'Fully allocated',
-  under: 'Has room',
+function weekCellOf(target: EventTarget | null): HTMLElement | null {
+  return target instanceof Element ? target.closest<HTMLElement>('td[data-col]') : null
+}
+
+function personRowOf(cell: HTMLElement): HTMLTableRowElement | null {
+  return cell.closest<HTMLTableRowElement>('tr[data-person]')
+}
+
+function cellPosition(cell: HTMLElement): CellPosition | null {
+  const row = personRowOf(cell)
+  return row ? { personId: Number(row.dataset.person), col: Number(cell.dataset.col) } : null
+}
+
+// Skips the save-error rows that sit between people.
+function adjacentPersonRow(row: HTMLTableRowElement, step: -1 | 1): HTMLTableRowElement | null {
+  let next = step < 0 ? row.previousElementSibling : row.nextElementSibling
+  while (next && !(next instanceof HTMLTableRowElement && next.dataset.person)) {
+    next = step < 0 ? next.previousElementSibling : next.nextElementSibling
+  }
+  return next
+}
+
+function cellForKey(cell: HTMLElement, key: string): HTMLElement | null {
+  const row = personRowOf(cell)
+  if (!row) return null
+  const col = Number(cell.dataset.col)
+  const cellAt = (r: HTMLTableRowElement | null, c: number) =>
+    r?.querySelector<HTMLElement>(`td[data-col="${c}"]`) ?? null
+  switch (key) {
+    case 'ArrowLeft':
+      return cellAt(row, col - 1)
+    case 'ArrowRight':
+      return cellAt(row, col + 1)
+    case 'ArrowUp':
+      return cellAt(adjacentPersonRow(row, -1), col)
+    case 'ArrowDown':
+      return cellAt(adjacentPersonRow(row, 1), col)
+    case 'Home':
+      return cellAt(row, 0)
+    case 'End':
+      return row.querySelector<HTMLElement>('td[data-col]:last-of-type')
+    default:
+      return null
+  }
 }
 
 const byName = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
@@ -84,6 +128,37 @@ export function CapacityGrid({ from, to }: Props) {
     [people, deferredOnlyOver, unresolvedSaves],
   )
 
+  // The week cells share one tab stop; arrow keys move it.
+  const [tabStop, setTabStop] = useState<CellPosition | null>(null)
+  const tooltipRef = useRef<WeekTooltipHandle>(null)
+  const tabPersonId = visiblePeople.some((p) => p.id === tabStop?.personId)
+    ? tabStop?.personId
+    : visiblePeople[0]?.id
+  const tabCol = Math.max(0, Math.min(tabStop?.col ?? 0, (data?.weeks.length ?? 1) - 1))
+
+  function onCellFocus(e: FocusEvent) {
+    const cell = weekCellOf(e.target)
+    const position = cell && cellPosition(cell)
+    if (!cell || !position) return
+    setTabStop((prev) => (prev?.personId === position.personId && prev.col === position.col ? prev : position))
+    tooltipRef.current?.show(cell, position, 'focus')
+  }
+
+  function onCellKeyDown(e: KeyboardEvent) {
+    const cell = weekCellOf(e.target)
+    const next = cell && cellForKey(cell, e.key)
+    if (!next) return
+    e.preventDefault()
+    next.focus()
+  }
+
+  function onPointerOver(e: PointerEvent) {
+    const cell = weekCellOf(e.target)
+    const position = cell && cellPosition(cell)
+    if (cell && position) tooltipRef.current?.show(cell, position, 'hover')
+    else tooltipRef.current?.hide('hover')
+  }
+
   function showEveryone() {
     setOnlyOver(false)
     filterRef.current?.focus()
@@ -134,7 +209,17 @@ export function CapacityGrid({ from, to }: Props) {
           </button>
         </div>
       ) : (
-        <div className="grid-scroll" aria-busy={updating} data-stale={stale}>
+        <div
+          className="grid-scroll"
+          aria-busy={updating}
+          data-stale={stale}
+          onFocus={onCellFocus}
+          onBlur={() => tooltipRef.current?.hide('focus')}
+          onKeyDown={onCellKeyDown}
+          onPointerOver={onPointerOver}
+          onPointerLeave={() => tooltipRef.current?.hide('hover')}
+          onScroll={() => tooltipRef.current?.reposition()}
+        >
           <table className="grid">
             <caption className="visually-hidden">
               Allocated hours against weekly capacity, {data.from} to {data.to}
@@ -143,17 +228,19 @@ export function CapacityGrid({ from, to }: Props) {
             <GridHead weeks={data.weeks} />
             <tbody>
               {visiblePeople.map((person) => (
-                <PersonRow key={person.id} person={person} />
+                <PersonRow key={person.id} person={person} tabCol={person.id === tabPersonId ? tabCol : null} />
               ))}
             </tbody>
           </table>
         </div>
       )}
+      <WeekTooltip ref={tooltipRef} people={visiblePeople} weeks={data.weeks} />
     </>
   )
 }
 
 function GridHead({ weeks }: { weeks: string[] }) {
+  const thisWeek = currentWeek()
   return (
     <thead>
       <tr>
@@ -162,14 +249,27 @@ function GridHead({ weeks }: { weeks: string[] }) {
         </th>
         <th scope="col" className="num">
           Capacity
+          <span className="th-hint" aria-hidden="true">
+            Editable
+          </span>
         </th>
         <th scope="col" className="num">
           Weeks over
         </th>
-        {weeks.map((monday) => {
+        {weeks.map((monday, i) => {
           const { label, year } = formatWeek(monday)
+          const now = monday === thisWeek
           return (
-            <th scope="col" key={monday} className="week">
+            <th
+              scope="col"
+              key={monday}
+              className={now ? 'week week--now' : 'week'}
+              aria-current={now ? 'date' : undefined}
+            >
+              <span className="week-ordinal" aria-hidden="true">
+                Week {i + 1}
+                {now && <span className="week-now">Now</span>}
+              </span>
               <time dateTime={monday}>
                 <span className="visually-hidden">Week of </span>
                 {label}
@@ -281,7 +381,7 @@ function LoadError({
   )
 }
 
-const PersonRow = memo(function PersonRow({ person }: { person: PersonCapacity }) {
+const PersonRow = memo(function PersonRow({ person, tabCol }: { person: PersonCapacity; tabCol: number | null }) {
   const { save, saving, failure, retry, dismiss } = useSaveCapacity(person.id)
   const rowRef = useRef<HTMLTableRowElement>(null)
   const statuses = person.allocated.map((a) => statusOf(a, person.capacity))
@@ -295,7 +395,7 @@ const PersonRow = memo(function PersonRow({ person }: { person: PersonCapacity }
 
   return (
     <>
-      <tr ref={rowRef} data-save-failed={failure !== null}>
+      <tr ref={rowRef} data-person={person.id} data-save-failed={failure !== null}>
         <th scope="row" className="name">
           <span dir="auto">{person.name}</span>
         </th>
@@ -313,7 +413,7 @@ const PersonRow = memo(function PersonRow({ person }: { person: PersonCapacity }
           )}
         </td>
         {person.allocated.map((allocated, i) => (
-          <td key={i} className={`cell cell--${statuses[i]}`}>
+          <td key={i} className={`cell cell--${statuses[i]}`} data-col={i} tabIndex={i === tabCol ? 0 : -1}>
             {statuses[i] === 'over' && (
               <span className="marker" aria-hidden="true">
                 ▲{' '}

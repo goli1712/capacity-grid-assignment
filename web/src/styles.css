@@ -1,22 +1,69 @@
 :root {
   color-scheme: light dark;
   font-family: ui-sans-serif, system-ui, sans-serif;
+  --accent: light-dark(#3d6aa8, #8aa6cc);
+  --line: color-mix(in srgb, CanvasText 15%, transparent);
+  --line-soft: color-mix(in srgb, CanvasText 8%, transparent);
+  --control-border: color-mix(in srgb, CanvasText 28%, transparent);
+  --quiet: color-mix(in srgb, CanvasText 58%, transparent);
+  --row-hover: color-mix(in srgb, CanvasText 5%, transparent);
+  --toolbar-bg: color-mix(in srgb, CanvasText 3%, Canvas);
+  --gutter: 1.5rem;
 }
 
 body {
   margin: 0;
-  padding: 2rem;
+  background: Canvas;
+}
+
+/* The page never scrolls: the grid's scroller takes whatever height is left. */
+main {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  height: 100dvh;
+  padding: 0 var(--gutter) 1rem;
+}
+
+main > * {
+  flex: none;
 }
 
 h1 {
-  font-size: 1.4rem;
-  margin: 0 0 0.25rem;
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 2rem;
+  margin: 0 calc(-1 * var(--gutter));
+  padding: 0.875rem var(--gutter);
+  background: var(--toolbar-bg);
+  border-block-end: 1px solid var(--line);
+}
+
+.toolbar-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.125rem 1rem;
 }
 
 .range {
-  margin: 0 0 1.5rem;
-  opacity: 0.6;
+  margin: 0;
+  color: var(--quiet);
   font-variant-numeric: tabular-nums;
+}
+
+.range-weeks {
+  margin-inline-start: 0.625rem;
+  padding-inline-start: 0.625rem;
+  border-inline-start: 1px solid var(--line);
 }
 
 table {
@@ -51,7 +98,7 @@ td {
   align-items: center;
   list-style: none;
   padding: 0;
-  margin: 0 0 1rem;
+  margin: 0;
   font-size: 0.875rem;
 }
 
@@ -63,14 +110,21 @@ td {
 }
 
 .grid-scroll {
+  /* Contains the visually hidden text, which would otherwise stretch the page. */
+  position: relative;
+  flex: 0 1 auto;
+  min-height: 0;
   overflow: auto;
-  max-width: fit-content;
-  max-height: calc(100vh - 12rem);
-  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  /* Keeps a focused cell clear of the sticky header and name column. */
+  scroll-padding-block-start: 4rem;
+  scroll-padding-inline-start: 12rem;
 }
 
 /* Collapsed borders vanish on sticky cells, so borders are drawn per cell. */
 .grid {
+  width: 100%;
   border-collapse: separate;
   border-spacing: 0;
 }
@@ -78,17 +132,82 @@ td {
 .grid th,
 .grid td {
   border: 0;
-  border-inline-end: 1px solid color-mix(in srgb, currentColor 15%, transparent);
-  border-block-end: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  border-inline-end: 1px solid var(--line-soft);
+  border-block-end: 1px solid var(--line-soft);
   white-space: nowrap;
 }
 
 .grid thead th {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
   background: Canvas;
   vertical-align: bottom;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-block-end-color: var(--line);
+}
+
+.grid tbody th,
+.grid tbody td {
+  height: 1.75rem;
+  padding-block: 0.375rem;
+}
+
+.grid tbody tr[data-person]:hover > * {
+  background-image: linear-gradient(var(--row-hover), var(--row-hover));
+}
+
+/* Name and number columns stay as narrow as their content; weeks share the rest. */
+.grid .name,
+.grid .num {
+  width: 1%;
+}
+
+.th-hint,
+.week-ordinal {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--quiet);
+}
+
+.th-hint {
+  margin-block-start: 0.125rem;
+}
+
+.week-ordinal {
+  margin-block-end: 0.125rem;
+}
+
+.grid .week--now {
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+
+.week--now time {
+  color: var(--accent);
+}
+
+.week-now {
+  margin-inline-start: 0.375rem;
+  padding: 0 0.3125rem;
+  border-radius: 0.25rem;
+  background: var(--accent);
+  color: Canvas;
+  font-weight: 600;
+}
+
+.grid td.cell {
+  cursor: default;
+}
+
+.grid td.cell:focus {
+  outline: none;
+}
+
+.grid td.cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .grid .name {
@@ -99,8 +218,13 @@ td {
   font-weight: 500;
 }
 
+/* Above the positioned capacity field that scrolls beneath it. */
+.grid tbody .name {
+  z-index: 1;
+}
+
 .grid thead .name {
-  z-index: 2;
+  z-index: 3;
 }
 
 .grid .num {
@@ -109,7 +233,8 @@ td {
 
 .grid .week,
 .grid .cell {
-  min-width: 5.5rem;
+  min-width: 4.5rem;
+  padding-inline: 0.625rem;
   text-align: end;
 }
 
@@ -150,41 +275,112 @@ td {
 }
 
 .range-controls {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 1rem;
-  margin: 0 0 1rem;
 }
 
-.range-step {
+.range-stepper {
   display: flex;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.range-arrow,
+.range-today,
+.range-dates input {
+  font: inherit;
+  font-size: 0.875rem;
+  border: 1px solid var(--control-border);
+  border-radius: 0.375rem;
+  color: inherit;
+}
+
+.range-arrow,
+.range-today {
+  padding: 0.3125rem 0.75rem;
+  background: Canvas;
+  cursor: pointer;
+}
+
+.range-arrow {
+  flex: none;
+  min-width: 2.25rem;
+  padding-inline: 0;
+}
+
+.range-arrow:hover:not(:disabled),
+.range-today:hover {
+  background: color-mix(in srgb, CanvasText 6%, Canvas);
+}
+
+.range-arrow:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.range-arrow:focus-visible,
+.range-today:focus-visible,
+.range-dates input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.range-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+}
+
+.range-dates label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--quiet);
+}
+
+.range-dates input {
+  padding: 0.25rem 0.375rem;
+  background: Field;
+  color: FieldText;
+  font-variant-numeric: tabular-nums;
 }
 
 .range-controls input[aria-invalid='true'] {
   outline: 2px solid light-dark(#c0321f, #ff6b57);
 }
 
+/* Floats under the controls so an error never pushes the grid down. */
 .range-error {
-  flex-basis: 100%;
-  min-height: 1lh;
+  position: absolute;
+  inset-block-start: calc(100% + 0.375rem);
+  inset-inline-end: 0;
+  z-index: 5;
   margin: 0;
   color: light-dark(#8c1d12, #ffb4a8);
   font-size: 0.875rem;
 }
 
+.range-error:not(:empty) {
+  padding: 0.375rem 0.5rem;
+  background: light-dark(#fbe0dd, #4a1f1b);
+  border-inline-start: 3px solid light-dark(#c0321f, #ff6b57);
+}
+
 .grid-bar {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 0.5rem 1.25rem;
 }
 
 .updating {
   min-height: 1lh;
-  margin: 0 0 1rem;
+  margin: 0;
   font-size: 0.875rem;
   opacity: 0.8;
 }
@@ -200,7 +396,7 @@ td {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 1rem;
-  margin: 0 0 1rem;
+  margin: 0;
   padding: 0.75rem 1rem;
   max-width: 60rem;
   background: light-dark(#fbe0dd, #4a1f1b);
@@ -260,21 +456,22 @@ td {
 }
 
 .capacity-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 4.75rem;
   font: inherit;
-  color: inherit;
-  padding: 0.125rem 0.25rem;
-  margin: -0.125rem -0.25rem;
-  border: 0;
-  border-radius: 0.25rem;
-  background: none;
+  color: FieldText;
+  padding: 0.125rem 0.4375rem;
+  margin: -0.125rem 0;
+  border: 1px solid var(--control-border);
+  border-radius: 0.375rem;
+  background: Field;
   cursor: text;
-  text-decoration: underline dashed color-mix(in srgb, currentColor 45%, transparent);
-  text-underline-offset: 0.25em;
 }
 
 .capacity-value:hover {
-  background: color-mix(in srgb, currentColor 8%, transparent);
-  text-decoration-color: currentColor;
+  border-color: var(--accent);
 }
 
 .capacity-value:focus-visible {
@@ -284,8 +481,8 @@ td {
 
 .capacity-value[aria-disabled='true'] {
   cursor: progress;
-  text-decoration: none;
-  background: none;
+  border-style: dashed;
+  border-color: var(--control-border);
 }
 
 .capacity-input {
@@ -386,7 +583,7 @@ td {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.5rem 1.25rem;
-  margin: 0 0 1rem;
+  margin: 0;
 }
 
 .grid-tools .updating {
@@ -480,4 +677,106 @@ td {
 .empty > button {
   margin-block-start: 0.75rem;
   font: inherit;
+}
+
+/* Inverted against the page so it reads as a layer above the grid. */
+.week-tip {
+  position: fixed;
+  inset: 0 auto auto 0;
+  z-index: 10;
+  pointer-events: none;
+  min-width: 11rem;
+  max-width: 16rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  background: light-dark(#23272e, #eef1f5);
+  color: light-dark(#eef1f5, #23272e);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 6px 20px color-mix(in srgb, #000 25%, transparent);
+}
+
+.week-tip p {
+  margin: 0;
+}
+
+.week-tip-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.week-tip-week {
+  margin-block-end: 0.375rem;
+  opacity: 0.75;
+}
+
+.week-tip-hours strong {
+  font-size: 1rem;
+}
+
+.week-tip[data-status='over'] .week-tip-diff {
+  color: light-dark(#ffb4a8, #a3281a);
+  font-weight: 700;
+}
+
+.week-tip[data-status='full'] .week-tip-diff {
+  color: light-dark(#b9cdea, #2c4f80);
+  font-weight: 600;
+}
+
+@media (max-width: 40rem) {
+  :root {
+    --gutter: 1rem;
+  }
+
+  main {
+    gap: 0.5rem;
+  }
+
+  .toolbar {
+    padding-block: 0.625rem;
+    gap: 0.5rem 1rem;
+  }
+
+  .legend {
+    gap: 0.25rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+
+  .grid-scroll {
+    scroll-padding-inline-start: 8rem;
+  }
+
+  .range-controls,
+  .range-stepper,
+  .range-dates {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .range-dates {
+    flex-wrap: nowrap;
+  }
+
+  .range-dates label {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.125rem;
+    font-size: 0.75rem;
+  }
+
+  .range-dates input {
+    min-width: 0;
+  }
+
+  .range-arrow {
+    align-self: flex-end;
+    height: 2rem;
+  }
 }
