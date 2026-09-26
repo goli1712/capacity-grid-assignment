@@ -35,3 +35,12 @@ Terms are in `CONTEXT.md`. The allocation reading is in `docs/adr/0001`.
 - **Open question: 0 / 0 shows as "fully allocated"** (the rule says equal means full). Eli's row is blue in every empty week. It isn't alarming, but it is noisy. The alternative is a neutral style for 0/0.
 - **Verified:** curl and headless Chrome, with the range temporarily pinned to 2025-12-31..2026-01-07 in `App.tsx` and then reverted. Ana 40/40 full (week of 2025-12-29); Dee 45/40 over and Eli 20/0 over (week of 2026-01-05). All 500 people render, collator-sorted, with the RTL names last. The 400s read clearly: missing, malformed, inverted, and 27 weeks.
 - **Loading and error states are placeholders** ("Loading…" and a `role="alert"` line). Ticket 03 replaces them.
+
+## 2026-09-26: ticket 02, range navigation
+
+- **URL holds the expanded range; no params means the default window.** "Today" clears the params instead of writing today's dates, so a bare link always opens on the viewer's current week. Arrows and Today use `pushState`, so Back/Forward step through them. From/To edits use `replaceState`, because a date input fires on every typed segment and each would otherwise become a Back step. A URL with only one of the two params is an error, not half-default.
+- **From/To are a local draft; only a valid draft is committed to the URL.** An invalid draft (To before From, over 26 weeks) shows inline and keeps the last valid grid on screen. A hand-edited invalid URL shows the same error and renders no grid, so nothing is requested.
+- **Inputs keep the typed mid-week date** rather than snapping to Monday: rewriting a date input's value while someone types into it breaks the typing. The whole-week range is visible in the line under the title and in the column headers (from the server echo).
+- **Aborting abandoned ranges comes from TanStack Query v5**: `fetchCapacity` consumes the signal, so a query that loses its last observer is cancelled. Verified by hand: the abandoned request fails with `net::ERR_ABORTED` and never renders.
+- **Left as is:** the line under the title shows the client's expansion, not the server echo, so mid-load it runs ahead of the dimmed columns. A hand-edited invalid URL renders no grid, so fixing it starts from "Loading…".
+- **Not tested in code:** the spec defers range tests (ticket 07 owns the only two). Verified by hand: default, ‹ › Today, mid-week expansion, both inline errors with no request, reload, Back, the dimmed "Updating…" state, and the abort.

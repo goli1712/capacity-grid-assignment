@@ -144,3 +144,52 @@ td {
   color: light-dark(#8c1d12, #ffb4a8);
   font-weight: 700;
 }
+
+.range {
+  min-height: 1lh;
+}
+
+.range-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 0 0 1rem;
+}
+
+.range-step {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.range-controls input[aria-invalid='true'] {
+  outline: 2px solid light-dark(#c0321f, #ff6b57);
+}
+
+.range-error {
+  flex-basis: 100%;
+  min-height: 1lh;
+  margin: 0;
+  color: light-dark(#8c1d12, #ffb4a8);
+  font-size: 0.875rem;
+}
+
+.grid-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1.25rem;
+}
+
+.updating {
+  min-height: 1lh;
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  opacity: 0.8;
+}
+
+.grid-scroll[aria-busy='true'] {
+  opacity: 0.5;
+  transition: opacity 150ms ease-in;
+}

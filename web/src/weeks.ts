@@ -34,7 +34,7 @@ function today(): string {
   return format(new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())))
 }
 
-export function defaultRange(): { from: string; to: string } {
+export function defaultRange(): Range {
   const from = startOfWeek(today())
   return { from, to: endOfWeek(addDays(from, 7 * 7)) }
 }
@@ -48,4 +48,33 @@ const weekLabel = new Intl.DateTimeFormat(undefined, {
 export function formatWeek(monday: string): { label: string; year: number } {
   const date = parse(monday)
   return { label: weekLabel.format(date), year: date.getUTCFullYear() }
+}
+
+const MAX_WEEKS = 26
+
+export type Range = { from: string; to: string }
+
+function isDate(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && format(parse(value)) === value
+}
+
+export function expandRange({ from, to }: Range): Range {
+  return { from: startOfWeek(from), to: endOfWeek(to) }
+}
+
+export function shiftRange(range: Range, weeks: number): Range {
+  return { from: addDays(range.from, 7 * weeks), to: addDays(range.to, 7 * weeks) }
+}
+
+export function sameRange(a: Range, b: Range): boolean {
+  return a.from === b.from && a.to === b.to
+}
+
+// Mirrors the server's 400s, so an invalid range is never requested.
+export function rangeError({ from, to }: Range): string | null {
+  if (!isDate(from) || !isDate(to)) return 'Enter a valid From and To date.'
+  if (to < from) return 'To is before From.'
+  const weeks = (parse(endOfWeek(to)).getTime() - parse(startOfWeek(from)).getTime() + DAY_MS) / (7 * DAY_MS)
+  if (weeks > MAX_WEEKS) return `That range covers ${weeks} weeks; the maximum is ${MAX_WEEKS}.`
+  return null
 }

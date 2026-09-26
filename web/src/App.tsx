@@ -1,16 +1,18 @@
 import { CapacityGrid } from './CapacityGrid'
-import { defaultRange } from './weeks'
+import { RangeControls } from './RangeControls'
+import { useUrlRange } from './useUrlRange'
+import { expandRange, rangeError } from './weeks'
 
 export function App() {
   // The range the grid loads. Widen it if you want to see more.
-  const { from, to } = defaultRange()
+  const [range, setRange] = useUrlRange()
+  const weekRange = rangeError(range) === null ? expandRange(range) : null
   return (
     <main>
       <h1>Team capacity</h1>
-      <p className="range">
-        {from} to {to}
-      </p>
-      <CapacityGrid from={from} to={to} />
+      <p className="range">{weekRange && `${weekRange.from} to ${weekRange.to}`}</p>
+      <RangeControls range={range} onChange={setRange} />
+      {weekRange && <CapacityGrid from={weekRange.from} to={weekRange.to} />}
     </main>
   )
 }

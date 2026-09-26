@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { fetchCapacity, type PersonCapacity } from './api'
 import { endOfWeek, formatWeek, startOfWeek } from './weeks'
 
@@ -41,9 +41,10 @@ export function CapacityGrid({ from, to }: Props) {
   // mid-week dates that expand to the same weeks share one entry.
   const weekFrom = startOfWeek(from)
   const weekTo = endOfWeek(to)
-  const { data, error, isPending } = useQuery({
+  const { data, error, isPending, isPlaceholderData } = useQuery({
     queryKey: ['capacity', weekFrom, weekTo],
     queryFn: ({ signal }) => fetchCapacity(weekFrom, weekTo, signal),
+    placeholderData: keepPreviousData,
   })
 
   const people = useMemo(
@@ -56,8 +57,13 @@ export function CapacityGrid({ from, to }: Props) {
 
   return (
     <>
-      <Legend />
-      <div className="grid-scroll">
+      <div className="grid-bar">
+        <Legend />
+        <p className="updating" role="status">
+          {isPlaceholderData && 'Updating…'}
+        </p>
+      </div>
+      <div className="grid-scroll" aria-busy={isPlaceholderData}>
         <table className="grid">
           <caption className="visually-hidden">
             Allocated hours against weekly capacity, {data.from} to {data.to}
