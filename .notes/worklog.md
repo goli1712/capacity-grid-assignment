@@ -88,3 +88,13 @@ Terms are in `CONTEXT.md`. The allocation reading is in `docs/adr/0001`.
 - **Nobody over:** the message names the range and offers "Show everyone", which turns the filter off and moves focus to the switch. The week of 2027-02-01 shows it, since the seed data ends on 2027-01-03.
 - **Verified** in headless Chrome over CDP: week of 2026-01-05 showed 500 people, then 15 of 500 with every row carrying an over cell. ‹ gave 39 of 500, › gave 15 again. Raising Dee to 45 gave 14 of 500 with Dee hidden (reset to 40 via curl). The week of 2027-02-01 showed the message, and "Show everyone" gave 500 with focus on the switch. Checked in light and dark mode. After the review fix: with the PATCH held, Dee stayed visible with "Saving…" (15 of 500) and was hidden once it was released (14 of 500). With the API stopped, Bo 40 → 30 failed; turning the filter on kept Bo and the error visible (16 of 500), and Dismiss hid Bo.
 - **Not tested in code,** as before: ticket 07 owns the tests.
+
+## 2026-09-26: ticket 07, tests around the capacity save
+
+- **Both tests render the whole `App`** under a fresh `QueryClient` (default options, as in `main.tsx`) with `fetch` stubbed by a small in-memory server. It builds each response when the request arrives, so a held response carries the data as it was then. That is how the "late range response" test gets a stale 40.
+- **The fake server ignores `AbortSignal` on purpose.** That is the worst case, a response already on the wire, so the test relies on the app discarding it and not on the fetch being aborted.
+- **In test 1, the refetch on the way back to the first range is held,** so the assertion sees the rolled-back cache entry and not a fresh server read.
+- **Checked the tests catch regressions:** skipping the rollback in `onSettled` fails test 1; turning both `cancelQueries` calls into no-ops fails test 2. Both were restored.
+- **jsdom quirk:** its accessible-name computation drops the space before a visually-hidden span, so the Retry button reads "Retrysaving Dee Okafor". The selector allows an optional space instead of changing the markup, which reads correctly in browsers.
+- **No `@testing-library/user-event`** is installed, so the tests use `fireEvent`. There is no Vitest setup file either, so jest-dom is imported in the test and `cleanup` is called by hand (Vitest globals are off).
+- **Left unfinished, as the ticket says:** Dismiss, zero capacity, validation, range expansion and the backend seam.
