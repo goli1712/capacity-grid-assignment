@@ -39,6 +39,14 @@ export function defaultRange(): Range {
   return { from, to: endOfWeek(addDays(from, 7 * 7)) }
 }
 
+export function mondaysIn({ from, to }: Range): string[] {
+  const mondays: string[] = []
+  for (let monday = from; monday <= to; monday = addDays(monday, 7)) {
+    mondays.push(monday)
+  }
+  return mondays
+}
+
 const weekLabel = new Intl.DateTimeFormat(undefined, {
   day: 'numeric',
   month: 'short',

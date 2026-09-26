@@ -193,3 +193,57 @@ td {
   opacity: 0.5;
   transition: opacity 150ms ease-in;
 }
+
+.load-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  max-width: 60rem;
+  background: light-dark(#fbe0dd, #4a1f1b);
+  color: light-dark(#8c1d12, #ffb4a8);
+  border-inline-start: 3px solid light-dark(#c0321f, #ff6b57);
+}
+
+.load-error p {
+  flex: 1 1 20rem;
+  margin: 0;
+}
+
+.grid-scroll[data-stale='true'] {
+  border-style: dashed;
+  filter: grayscale(0.6);
+}
+
+.empty {
+  margin: 0;
+  padding: 2rem 1rem;
+  max-width: 40rem;
+  border: 1px dashed color-mix(in srgb, currentColor 30%, transparent);
+  text-align: center;
+  opacity: 0.8;
+}
+
+.bone {
+  display: inline-block;
+  width: 3rem;
+  height: 0.9em;
+  vertical-align: middle;
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  animation: bone-pulse 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes bone-pulse {
+  to {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bone {
+    animation: none;
+  }
+}

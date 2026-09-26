@@ -44,3 +44,13 @@ Terms are in `CONTEXT.md`. The allocation reading is in `docs/adr/0001`.
 - **Aborting abandoned ranges comes from TanStack Query v5**: `fetchCapacity` consumes the signal, so a query that loses its last observer is cancelled. Verified by hand: the abandoned request fails with `net::ERR_ABORTED` and never renders.
 - **Left as is:** the line under the title shows the client's expansion, not the server echo, so mid-load it runs ahead of the dimmed columns. A hand-edited invalid URL renders no grid, so fixing it starts from "Loading…".
 - **Not tested in code:** the spec defers range tests (ticket 07 owns the only two). Verified by hand: default, ‹ › Today, mid-week expansion, both inline errors with no request, reload, Back, the dimmed "Updating…" state, and the abort.
+
+## 2026-09-26: ticket 03, load, empty and error states
+
+- **TanStack drops `placeholderData` once a fetch errors**, so `keepPreviousData` alone can't keep the stale view. The grid remembers the last range that loaded and keeps a second, disabled `useQuery` on that key. It observes the cache entry rather than copying the data, so ticket 04's cache writes still reach a stale grid, and the entry isn't garbage-collected.
+- **Stale banner names both ranges:** the one that failed and the one on screen, with the time it loaded. Covers a failed navigation and a failed refetch of the same range alike. The stale grid also gets a dashed border and is desaturated.
+- **Default query retries kept (3, with backoff):** an outage takes about 7 s to surface as an error or stale banner, and Retry takes as long to fail again. A blip never flashes an error, and that's worth the wait.
+- **The skeleton draws the real week headers** (computed client-side from the requested range) and 12 placeholder rows, so the layout doesn't jump when data lands.
+- **Verified** in headless Chrome over CDP: the skeleton while the response was held; `docker compose stop api` then ›, which gave the stale banner; reload with the API down, which gave the error banner; `start api` then Retry, which recovered from both. The empty state was checked by rewriting the response to `people: []` in the browser, since the seed can't produce it.
+- **Not tested in code,** as in 01/02: ticket 07 owns the only tests.
+- **For ticket 04:** the stale fallback is watched only by a disabled observer. `invalidateQueries` (active-only by default) won't refetch it, so the save flow must write every `['capacity', …]` entry directly. `setQueryData` also resets `dataUpdatedAt`, so after an optimistic edit the stale banner's "loaded at" shows the edit time.

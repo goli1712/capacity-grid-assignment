@@ -1,7 +1,7 @@
-import { useMemo } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useMemo, useState, type ReactNode } from 'react'
+import { keepPreviousData, queryOptions, useQuery } from '@tanstack/react-query'
 import { fetchCapacity, type PersonCapacity } from './api'
-import { endOfWeek, formatWeek, startOfWeek } from './weeks'
+import { expandRange, formatWeek, mondaysIn, sameRange, type Range } from './weeks'
 
 type Props = {
   from: string
@@ -25,6 +25,14 @@ const STATUS_TEXT: Record<Status, string> = {
 
 const hoursFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 })
 const byName = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
+const timeFormat = new Intl.DateTimeFormat(undefined, { timeStyle: 'short' })
+
+function capacityQuery(range: Range) {
+  return queryOptions({
+    queryKey: ['capacity', range.from, range.to],
+    queryFn: ({ signal }) => fetchCapacity(range.from, range.to, signal),
+  })
+}
 
 // CapacityGrid renders one row per person and one column per week, showing
 // how allocated each person is and making over-allocation obvious.
@@ -39,68 +47,164 @@ const byName = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true
 export function CapacityGrid({ from, to }: Props) {
   // Key the cache by the whole-week range the server will actually use, so
   // mid-week dates that expand to the same weeks share one entry.
-  const weekFrom = startOfWeek(from)
-  const weekTo = endOfWeek(to)
-  const { data, error, isPending, isPlaceholderData } = useQuery({
-    queryKey: ['capacity', weekFrom, weekTo],
-    queryFn: ({ signal }) => fetchCapacity(weekFrom, weekTo, signal),
-    placeholderData: keepPreviousData,
-  })
+  const requested = expandRange({ from, to })
+  const current = useQuery({ ...capacityQuery(requested), placeholderData: keepPreviousData })
+
+  // A failed fetch drops the placeholder, so remember the last range that
+  // loaded and keep observing its cache entry to show it as stale.
+  const [lastGood, setLastGood] = useState<Range | null>(null)
+  if (current.data && !current.isPlaceholderData && !(lastGood && sameRange(lastGood, requested))) {
+    setLastGood(requested)
+  }
+  const fallback = useQuery({ ...capacityQuery(lastGood ?? requested), enabled: false })
+
+  const data = current.data ?? fallback.data
+  const loadedAt = current.data ? current.dataUpdatedAt : fallback.dataUpdatedAt
+  const stale = current.error !== null
+  const updating = !stale && (current.isPlaceholderData || !current.data)
+  const retry = () => void current.refetch()
 
   const people = useMemo(
     () => (data ? [...data.people].sort((a, b) => byName.compare(a.name, b.name)) : []),
     [data],
   )
 
-  if (isPending) return <p>Loading capacity…</p>
-  if (error) return <p role="alert">Could not load capacity: {error.message}</p>
+  if (!data) {
+    if (current.error) {
+      return (
+        <LoadError retrying={current.isFetching} onRetry={retry}>
+          Could not load capacity for {requested.from} to {requested.to}: {current.error.message}
+        </LoadError>
+      )
+    }
+    return <GridSkeleton weeks={mondaysIn(requested)} />
+  }
 
+  return (
+    <>
+      {current.error && (
+        <LoadError retrying={current.isFetching} onRetry={retry}>
+          <strong>Stale.</strong> Could not load capacity for {requested.from} to {requested.to}:{' '}
+          {current.error.message}. Showing {data.from} to {data.to} as loaded at{' '}
+          {timeFormat.format(loadedAt)}.
+        </LoadError>
+      )}
+      <div className="grid-bar">
+        <Legend />
+        <p className="updating" role="status">
+          {updating && 'Updating…'}
+        </p>
+      </div>
+      {people.length === 0 ? (
+        <p className="empty">
+          No people to show for {data.from} to {data.to}.
+        </p>
+      ) : (
+        <div className="grid-scroll" aria-busy={updating} data-stale={stale}>
+          <table className="grid">
+            <caption className="visually-hidden">
+              Allocated hours against weekly capacity, {data.from} to {data.to}
+              {stale && ', stale'}
+            </caption>
+            <GridHead weeks={data.weeks} />
+            <tbody>
+              {people.map((person) => (
+                <PersonRow key={person.id} person={person} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  )
+}
+
+function GridHead({ weeks }: { weeks: string[] }) {
+  return (
+    <thead>
+      <tr>
+        <th scope="col" className="name">
+          Person
+        </th>
+        <th scope="col" className="num">
+          Capacity
+        </th>
+        <th scope="col" className="num">
+          Weeks over
+        </th>
+        {weeks.map((monday) => {
+          const { label, year } = formatWeek(monday)
+          return (
+            <th scope="col" key={monday} className="week">
+              <time dateTime={monday}>
+                <span className="visually-hidden">Week of </span>
+                {label}
+                <span className="year">{year}</span>
+              </time>
+            </th>
+          )
+        })}
+      </tr>
+    </thead>
+  )
+}
+
+const SKELETON_ROWS = 12
+
+function GridSkeleton({ weeks }: { weeks: string[] }) {
   return (
     <>
       <div className="grid-bar">
         <Legend />
         <p className="updating" role="status">
-          {isPlaceholderData && 'Updating…'}
+          Loading capacity…
         </p>
       </div>
-      <div className="grid-scroll" aria-busy={isPlaceholderData}>
-        <table className="grid">
-          <caption className="visually-hidden">
-            Allocated hours against weekly capacity, {data.from} to {data.to}
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col" className="name">
-                Person
-              </th>
-              <th scope="col" className="num">
-                Capacity
-              </th>
-              <th scope="col" className="num">
-                Weeks over
-              </th>
-              {data.weeks.map((monday) => {
-                const { label, year } = formatWeek(monday)
-                return (
-                  <th scope="col" key={monday} className="week">
-                    <time dateTime={monday}>
-                      <span className="visually-hidden">Week of </span>
-                      {label}
-                      <span className="year">{year}</span>
-                    </time>
-                  </th>
-                )
-              })}
-            </tr>
-          </thead>
+      <div className="grid-scroll" aria-busy="true">
+        <table className="grid" aria-hidden="true">
+          <GridHead weeks={weeks} />
           <tbody>
-            {people.map((person) => (
-              <PersonRow key={person.id} person={person} />
+            {Array.from({ length: SKELETON_ROWS }, (_, row) => (
+              <tr key={row}>
+                <th className="name">
+                  <span className="bone" style={{ width: `${6 + ((row * 3) % 5)}rem` }} />
+                </th>
+                <td className="num">
+                  <span className="bone" />
+                </td>
+                <td className="num">
+                  <span className="bone" />
+                </td>
+                {weeks.map((monday) => (
+                  <td key={monday} className="cell">
+                    <span className="bone" />
+                  </td>
+                ))}
+              </tr>
             ))}
           </tbody>
         </table>
       </div>
     </>
+  )
+}
+
+function LoadError({
+  retrying,
+  onRetry,
+  children,
+}: {
+  retrying: boolean
+  onRetry: () => void
+  children: ReactNode
+}) {
+  return (
+    <div className="load-error" role="alert">
+      <p>{children}</p>
+      <button type="button" onClick={onRetry} disabled={retrying}>
+        {retrying ? 'Retrying…' : 'Retry'}
+      </button>
+    </div>
   )
 }
 
