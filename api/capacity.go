@@ -1,22 +1,22 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 )
 
 const (
 	dateLayout = "2006-01-02"
-	// maxWeeks caps a single request. Production rosters run to thousands of
-	// people and two years of history, so an unbounded range is a real cost.
-	maxWeeks = 26
+	maxWeeks   = 26
 )
 
 type capacityResponse struct {
-	From   string           `json:"from"`  // Monday of the first week
-	To     string           `json:"to"`    // Sunday of the last week
-	Weeks  []string         `json:"weeks"` // Mondays, ascending
+	From   string           `json:"from"`
+	To     string           `json:"to"`
+	Weeks  []string         `json:"weeks"`
 	People []personCapacity `json:"people"`
 }
 
@@ -24,16 +24,12 @@ type personCapacity struct {
 	ID       int     `json:"id"`
 	Name     string  `json:"name"`
 	Capacity float64 `json:"capacity"`
-	// Allocated[i] is the allocated hours in Weeks[i]; dense, 0 where empty.
+	// Aligned with Weeks; dense, 0 where empty.
 	Allocated []float64 `json:"allocated"`
 }
 
-// capacityQuery returns every person with one allocated-hours figure per week,
-// ordered by week, for the whole weeks $1 (a Monday) to $2 (a Sunday).
-//
-// Allocated hours are the plain sum of every assignment row (ADR 0001) times
-// the working days (Mon–Fri) the assignment overlaps in that week. Weeks come
-// from a generated series so weeks with nothing in them still come back as 0.
+// $1 is a Monday, $2 a Sunday. Every assignment row counts, duplicates included,
+// times the working days it overlaps in the week: week_start + 4 is Friday.
 const capacityQuery = `
 WITH weeks AS (
 	SELECT gs::date AS week_start
@@ -68,6 +64,13 @@ ORDER BY p.id
 
 // handleCapacity serves GET /api/capacity?from=YYYY-MM-DD&to=YYYY-MM-DD
 //
+// It should return, for every person and every week in the requested range,
+// how many hours they are allocated and how much capacity they have.
+//
+// The response shape is yours to design — the grid in web/ is the consumer.
+//
+// TODO: implement.
+//
 // The range is expanded to whole ISO weeks: from back to its Monday, to
 // forward to its Sunday. The response echoes the expanded range.
 func (s *server) handleCapacity(w http.ResponseWriter, r *http.Request) {
@@ -77,30 +80,15 @@ func (s *server) handleCapacity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	weeks := weekStarts(from, to)
-	if len(weeks) > maxWeeks {
+	if n := int(to.Sub(from).Hours()/24+1) / 7; n > maxWeeks {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf(
-			"range covers %d weeks; the maximum is %d", len(weeks), maxWeeks))
+			"range covers %d weeks; the maximum is %d", n, maxWeeks))
 		return
 	}
 
-	rows, err := s.db.Query(r.Context(), capacityQuery, from, to)
+	people, err := s.loadCapacity(r.Context(), from, to)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load capacity")
-		return
-	}
-	defer rows.Close()
-
-	people := []personCapacity{}
-	for rows.Next() {
-		var p personCapacity
-		if err := rows.Scan(&p.ID, &p.Name, &p.Capacity, &p.Allocated); err != nil {
-			writeError(w, http.StatusInternalServerError, "could not load capacity")
-			return
-		}
-		people = append(people, p)
-	}
-	if err := rows.Err(); err != nil {
+		log.Printf("capacity %s..%s: %v", from.Format(dateLayout), to.Format(dateLayout), err)
 		writeError(w, http.StatusInternalServerError, "could not load capacity")
 		return
 	}
@@ -108,28 +96,42 @@ func (s *server) handleCapacity(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, capacityResponse{
 		From:   from.Format(dateLayout),
 		To:     to.Format(dateLayout),
-		Weeks:  weeks,
+		Weeks:  weekStarts(from, to),
 		People: people,
 	})
 }
 
-// parseRange validates from/to and expands them to whole ISO weeks.
-func parseRange(rawFrom, rawTo string) (from, to time.Time, err error) {
-	from, err = parseDate("from", rawFrom)
+func (s *server) loadCapacity(ctx context.Context, from, to time.Time) ([]personCapacity, error) {
+	rows, err := s.db.Query(ctx, capacityQuery, from, to)
 	if err != nil {
-		return
+		return nil, err
 	}
-	to, err = parseDate("to", rawTo)
+	defer rows.Close()
+
+	people := []personCapacity{}
+	for rows.Next() {
+		var p personCapacity
+		if err := rows.Scan(&p.ID, &p.Name, &p.Capacity, &p.Allocated); err != nil {
+			return nil, err
+		}
+		people = append(people, p)
+	}
+	return people, rows.Err()
+}
+
+func parseRange(rawFrom, rawTo string) (time.Time, time.Time, error) {
+	from, err := parseDate("from", rawFrom)
 	if err != nil {
-		return
+		return time.Time{}, time.Time{}, err
+	}
+	to, err := parseDate("to", rawTo)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
 	}
 	if to.Before(from) {
-		err = fmt.Errorf("to (%s) is before from (%s)", rawTo, rawFrom)
-		return
+		return time.Time{}, time.Time{}, fmt.Errorf("to (%s) is before from (%s)", rawTo, rawFrom)
 	}
-	from = from.AddDate(0, 0, -daysSinceMonday(from))
-	to = to.AddDate(0, 0, 6-daysSinceMonday(to))
-	return
+	return from.AddDate(0, 0, -daysSinceMonday(from)), to.AddDate(0, 0, 6-daysSinceMonday(to)), nil
 }
 
 func parseDate(name, raw string) (time.Time, error) {
@@ -147,7 +149,6 @@ func daysSinceMonday(d time.Time) int {
 	return (int(d.Weekday()) + 6) % 7
 }
 
-// weekStarts lists the Mondays from from (a Monday) up to to (a Sunday).
 func weekStarts(from, to time.Time) []string {
 	var weeks []string
 	for d := from; !d.After(to); d = d.AddDate(0, 0, 7) {

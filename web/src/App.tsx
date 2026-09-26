@@ -1,17 +1,16 @@
 import { CapacityGrid } from './CapacityGrid'
-
-// The range the grid loads. Widen it if you want to see more.
-const FROM = '2025-12-29'
-const TO = '2026-01-16'
+import { defaultRange } from './weeks'
 
 export function App() {
+  // The range the grid loads. Widen it if you want to see more.
+  const { from, to } = defaultRange()
   return (
     <main>
       <h1>Team capacity</h1>
       <p className="range">
-        {FROM} to {TO}
+        {from} to {to}
       </p>
-      <CapacityGrid from={FROM} to={TO} />
+      <CapacityGrid from={from} to={to} />
     </main>
   )
 }
