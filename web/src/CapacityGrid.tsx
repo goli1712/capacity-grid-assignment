@@ -1,8 +1,8 @@
-import { memo, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useDeferredValue, useMemo, useRef, useState, type ReactNode, type Ref } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { PersonCapacity } from './api'
 import { CapacityEditor } from './CapacityEditor'
-import { capacityQuery, useSaveCapacity, type SaveFailure } from './capacityCache'
+import { capacityQuery, useSaveCapacity, useUnresolvedSaves, type SaveFailure } from './capacityCache'
 import { hoursFormat } from './format'
 import { expandRange, formatWeek, mondaysIn, sameRange, type Range } from './weeks'
 
@@ -18,6 +18,10 @@ function statusOf(allocated: number, capacity: number): Status {
   if (allocated > capacity) return 'over'
   if (allocated === capacity) return 'full'
   return 'under'
+}
+
+function isOverAllocated(person: PersonCapacity): boolean {
+  return person.allocated.some((allocated) => statusOf(allocated, person.capacity) === 'over')
 }
 
 const STATUS_TEXT: Record<Status, string> = {
@@ -66,6 +70,35 @@ export function CapacityGrid({ from, to }: Props) {
     [data],
   )
 
+  // The switch flips at once; the rows follow as a deferred render, since
+  // turning the filter off can mount hundreds of rows.
+  const [onlyOver, setOnlyOver] = useState(false)
+  const deferredOnlyOver = useDeferredValue(onlyOver)
+  const filterRef = useRef<HTMLInputElement>(null)
+  // A person mid-save or with a failed save stays visible, so the saving
+  // state and the Retry/Dismiss row can't be filtered away with them.
+  const unresolvedSaves = useUnresolvedSaves()
+  const visiblePeople = useMemo(
+    () =>
+      deferredOnlyOver ? people.filter((p) => isOverAllocated(p) || unresolvedSaves.has(p.id)) : people,
+    [people, deferredOnlyOver, unresolvedSaves],
+  )
+
+  function showEveryone() {
+    setOnlyOver(false)
+    filterRef.current?.focus()
+  }
+
+  let countLabel: string | null = null
+  if (data) {
+    countLabel = deferredOnlyOver ? `${visiblePeople.length} of ${people.length} people` : `${people.length} people`
+  }
+  const filterControl = (
+    <OverFilter ref={filterRef} checked={onlyOver} onChange={setOnlyOver}>
+      {countLabel}
+    </OverFilter>
+  )
+
   if (!data) {
     if (current.error) {
       return (
@@ -74,7 +107,7 @@ export function CapacityGrid({ from, to }: Props) {
         </LoadError>
       )
     }
-    return <GridSkeleton weeks={mondaysIn(requested)} />
+    return <GridSkeleton weeks={mondaysIn(requested)} filterControl={filterControl} />
   }
 
   return (
@@ -86,16 +119,20 @@ export function CapacityGrid({ from, to }: Props) {
           {timeFormat.format(loadedAt)}.
         </LoadError>
       )}
-      <div className="grid-bar">
-        <Legend />
-        <p className="updating" role="status">
-          {updating && 'Updating…'}
-        </p>
-      </div>
+      <GridBar status={updating && 'Updating…'}>{filterControl}</GridBar>
       {people.length === 0 ? (
         <p className="empty">
           No people to show for {data.from} to {data.to}.
         </p>
+      ) : visiblePeople.length === 0 ? (
+        <div className="empty" aria-busy={updating} data-stale={stale}>
+          <p>
+            Nobody is over-allocated from {data.from} to {data.to}.
+          </p>
+          <button type="button" onClick={showEveryone}>
+            Show everyone
+          </button>
+        </div>
       ) : (
         <div className="grid-scroll" aria-busy={updating} data-stale={stale}>
           <table className="grid">
@@ -105,7 +142,7 @@ export function CapacityGrid({ from, to }: Props) {
             </caption>
             <GridHead weeks={data.weeks} />
             <tbody>
-              {people.map((person) => (
+              {visiblePeople.map((person) => (
                 <PersonRow key={person.id} person={person} />
               ))}
             </tbody>
@@ -148,15 +185,24 @@ function GridHead({ weeks }: { weeks: string[] }) {
 
 const SKELETON_ROWS = 12
 
-function GridSkeleton({ weeks }: { weeks: string[] }) {
+function GridBar({ status, children }: { status: ReactNode; children: ReactNode }) {
+  return (
+    <div className="grid-bar">
+      <Legend />
+      <div className="grid-tools">
+        <p className="updating" role="status">
+          {status}
+        </p>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function GridSkeleton({ weeks, filterControl }: { weeks: string[]; filterControl: ReactNode }) {
   return (
     <>
-      <div className="grid-bar">
-        <Legend />
-        <p className="updating" role="status">
-          Loading capacity…
-        </p>
-      </div>
+      <GridBar status="Loading capacity…">{filterControl}</GridBar>
       <div className="grid-scroll" aria-busy="true">
         <table className="grid" aria-hidden="true">
           <GridHead weeks={weeks} />
@@ -183,6 +229,36 @@ function GridSkeleton({ weeks }: { weeks: string[] }) {
         </table>
       </div>
     </>
+  )
+}
+
+function OverFilter({
+  ref,
+  checked,
+  onChange,
+  children,
+}: {
+  ref: Ref<HTMLInputElement>
+  checked: boolean
+  onChange: (checked: boolean) => void
+  children: ReactNode
+}) {
+  return (
+    <div className="over-filter">
+      <label>
+        <input
+          ref={ref}
+          type="checkbox"
+          role="switch"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+        Only over-allocated
+      </label>
+      <span className="filter-count" role="status">
+        {children}
+      </span>
+    </div>
   )
 }
 

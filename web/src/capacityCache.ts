@@ -6,6 +6,7 @@ import {
   type Query,
   type QueryClient,
 } from '@tanstack/react-query'
+import { useMemo } from 'react'
 import { fetchCapacity, updateCapacity, type CapacityResponse, type Person } from './api'
 import type { Range } from './weeks'
 
@@ -118,6 +119,22 @@ export function useSaveCapacity(personId: number) {
     },
     dismiss,
   }
+}
+
+// People whose latest save is still in flight, or failed and hasn't been
+// retried or dismissed yet.
+export function useUnresolvedSaves(): Set<number> {
+  const saves = useMutationState({
+    filters: { mutationKey: [SAVE_KEY] },
+    select: (mutation) => ({
+      personId: mutation.options.mutationKey?.[1] as number,
+      status: mutation.state.status,
+    }),
+  })
+  return useMemo(() => {
+    const latest = new Map(saves.map((save) => [save.personId, save.status]))
+    return new Set([...latest].filter(([, status]) => status === 'pending' || status === 'error').map(([id]) => id))
+  }, [saves])
 }
 
 function capacityQueries(client: QueryClient): Query[] {
