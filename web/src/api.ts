@@ -27,11 +27,17 @@ export async function fetchCapacity(
 }
 
 export async function updateCapacity(id: number, capacity: number): Promise<Person> {
-  const res = await fetch(`/api/people/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ capacity }),
-  })
+  let res: Response
+  try {
+    res = await fetch(`/api/people/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capacity }),
+    })
+  } catch {
+    throw new Error('network error')
+  }
+  if (res.status >= 500) throw new Error('server unavailable')
   if (!res.ok) throw new Error(await errorMessage(res))
   return res.json()
 }

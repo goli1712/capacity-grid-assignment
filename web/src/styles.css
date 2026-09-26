@@ -338,3 +338,43 @@ td {
     animation: none;
   }
 }
+
+.grid tr[data-save-failed='true'] > * {
+  border-block-end-color: transparent;
+}
+
+.grid tr[data-save-failed='true'] > .name {
+  box-shadow: inset 3px 0 0 light-dark(#c0321f, #ff6b57);
+}
+
+.grid .save-error-row > td {
+  padding: 0;
+  background: light-dark(#fbe0dd, #4a1f1b);
+  white-space: normal;
+}
+
+/* Sticks to the scroller's start edge so it stays readable however far the
+   weeks are scrolled. */
+.save-error {
+  position: sticky;
+  inset-inline-start: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.75rem;
+  width: max-content;
+  max-width: min(48rem, calc(100vw - 6rem));
+  padding: 0.5rem 0.75rem;
+  color: light-dark(#8c1d12, #ffb4a8);
+  font-size: 0.875rem;
+  box-shadow: inset 3px 0 0 light-dark(#c0321f, #ff6b57);
+}
+
+.save-error p {
+  flex: 1 1 18rem;
+  margin: 0;
+}
+
+.save-error button {
+  font: inherit;
+}

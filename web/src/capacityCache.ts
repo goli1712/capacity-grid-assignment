@@ -1,6 +1,8 @@
 import {
   queryOptions,
   useMutation,
+  useMutationState,
+  useQueryClient,
   type Query,
   type QueryClient,
 } from '@tanstack/react-query'
@@ -26,13 +28,24 @@ type SaveContext = {
   interrupted: Query[]
 }
 
+export type SaveFailure = {
+  attempted: number
+  reason: string
+}
+
 // Saves one person's capacity optimistically across every cached range.
 // Only that person's capacity is written or rolled back, so saves for
 // different people never clobber each other.
+//
+// A failed save stays in the mutation cache until it is retried, dismissed
+// or replaced by a new save, so it survives the row unmounting.
 export function useSaveCapacity(personId: number) {
-  return useMutation<Person, Error, number, SaveContext>({
-    mutationKey: [SAVE_KEY, personId],
+  const client = useQueryClient()
+  const mutationKey = [SAVE_KEY, personId]
+  const { mutate } = useMutation<Person, Error, number, SaveContext>({
+    mutationKey,
     scope: { id: `${SAVE_KEY}-${personId}` },
+    gcTime: Infinity,
     mutationFn: (capacity) => updateCapacity(personId, capacity),
     onMutate: async (capacity, { client }) => {
       const interrupted = inFlight(client)
@@ -58,16 +71,53 @@ export function useSaveCapacity(personId: number) {
       } else {
         // Ranges that loaded during the save were given the optimistic value
         // and have nothing to restore to, so they are fetched again instead.
+        // Capacity is one figure per person, so until that refetch lands (or
+        // if it fails) they show the value snapshotted from any other range.
+        const lastSaved = context?.previous.values().next().value
         for (const query of capacityQueries(client)) {
-          const capacity = context?.previous.get(query.queryHash)
-          if (capacity === undefined) toRefetch.add(query)
-          else client.setQueryData<CapacityResponse>(query.queryKey, (data) => withCapacity(data, personId, capacity))
+          const capacity = context?.previous.get(query.queryHash) ?? lastSaved
+          if (!context?.previous.has(query.queryHash)) toRefetch.add(query)
+          if (capacity !== undefined) {
+            client.setQueryData<CapacityResponse>(query.queryKey, (data) => withCapacity(data, personId, capacity))
+          }
         }
       }
 
       void client.invalidateQueries({ queryKey: CAPACITY_KEY, predicate: (q) => toRefetch.has(q) })
     },
   })
+
+  const latest = useMutationState({
+    filters: { mutationKey },
+    select: ({ state }) => ({ status: state.status, capacity: state.variables as number, error: state.error }),
+  }).at(-1)
+
+  // Settled saves are only kept to show a failure, so drop them before the
+  // next one; otherwise every save would stay cached forever.
+  function dismiss() {
+    const cache = client.getMutationCache()
+    for (const mutation of cache.findAll({ mutationKey })) {
+      if (mutation.state.status !== 'pending') cache.remove(mutation)
+    }
+  }
+
+  function save(capacity: number) {
+    dismiss()
+    mutate(capacity)
+  }
+
+  const failure: SaveFailure | null =
+    latest?.status === 'error' ? { attempted: latest.capacity, reason: latest.error?.message ?? 'unknown error' } : null
+
+  return {
+    save,
+    saving: latest?.status === 'pending',
+    failure,
+    retry: () => {
+      if (failure) save(failure.attempted)
+    },
+    dismiss,
+  }
 }
 
 function capacityQueries(client: QueryClient): Query[] {

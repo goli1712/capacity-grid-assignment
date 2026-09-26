@@ -1,8 +1,8 @@
-import { memo, useMemo, useState, type ReactNode } from 'react'
+import { memo, useMemo, useRef, useState, type ReactNode } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { PersonCapacity } from './api'
 import { CapacityEditor } from './CapacityEditor'
-import { capacityQuery, useSaveCapacity } from './capacityCache'
+import { capacityQuery, useSaveCapacity, type SaveFailure } from './capacityCache'
 import { hoursFormat } from './format'
 import { expandRange, formatWeek, mondaysIn, sameRange, type Range } from './weeks'
 
@@ -206,47 +206,102 @@ function LoadError({
 }
 
 const PersonRow = memo(function PersonRow({ person }: { person: PersonCapacity }) {
-  const save = useSaveCapacity(person.id)
+  const { save, saving, failure, retry, dismiss } = useSaveCapacity(person.id)
+  const rowRef = useRef<HTMLTableRowElement>(null)
   const statuses = person.allocated.map((a) => statusOf(a, person.capacity))
   const weeksOver = statuses.filter((s) => s === 'over').length
 
+  // Retry and Dismiss remove the error row, so focus moves to the capacity
+  // it was about instead of falling back to the page.
+  function focusCapacity() {
+    rowRef.current?.querySelector<HTMLElement>('.capacity-value')?.focus()
+  }
+
   return (
-    <tr>
-      <th scope="row" className="name">
-        <span dir="auto">{person.name}</span>
-      </th>
-      <td className="num">
-        <CapacityEditor
-          name={person.name}
-          capacity={person.capacity}
-          saving={save.isPending}
-          onSave={save.mutate}
-        />
-      </td>
-      <td className="num">
-        {weeksOver > 0 ? (
-          <span className="over-count">
-            <span aria-hidden="true">▲ </span>
-            {weeksOver}
-          </span>
-        ) : (
-          <span className="muted">0</span>
-        )}
-      </td>
-      {person.allocated.map((allocated, i) => (
-        <td key={i} className={`cell cell--${statuses[i]}`}>
-          {statuses[i] === 'over' && (
-            <span className="marker" aria-hidden="true">
-              ▲{' '}
-            </span>
-          )}
-          {hoursFormat.format(allocated)} / {hoursFormat.format(person.capacity)}
-          <span className="visually-hidden">, {STATUS_TEXT[statuses[i]]}</span>
+    <>
+      <tr ref={rowRef} data-save-failed={failure !== null}>
+        <th scope="row" className="name">
+          <span dir="auto">{person.name}</span>
+        </th>
+        <td className="num">
+          <CapacityEditor name={person.name} capacity={person.capacity} saving={saving} onSave={save} />
         </td>
-      ))}
-    </tr>
+        <td className="num">
+          {weeksOver > 0 ? (
+            <span className="over-count">
+              <span aria-hidden="true">▲ </span>
+              {weeksOver}
+            </span>
+          ) : (
+            <span className="muted">0</span>
+          )}
+        </td>
+        {person.allocated.map((allocated, i) => (
+          <td key={i} className={`cell cell--${statuses[i]}`}>
+            {statuses[i] === 'over' && (
+              <span className="marker" aria-hidden="true">
+                ▲{' '}
+              </span>
+            )}
+            {hoursFormat.format(allocated)} / {hoursFormat.format(person.capacity)}
+            <span className="visually-hidden">, {STATUS_TEXT[statuses[i]]}</span>
+          </td>
+        ))}
+      </tr>
+      {failure && (
+        <SaveError
+          failure={failure}
+          name={person.name}
+          lastSaved={person.capacity}
+          colSpan={person.allocated.length + 3}
+          onRetry={() => {
+            retry()
+            focusCapacity()
+          }}
+          onDismiss={() => {
+            dismiss()
+            focusCapacity()
+          }}
+        />
+      )}
+    </>
   )
 })
+
+function SaveError({
+  failure,
+  name,
+  lastSaved,
+  colSpan,
+  onRetry,
+  onDismiss,
+}: {
+  failure: SaveFailure
+  name: string
+  lastSaved: number
+  colSpan: number
+  onRetry: () => void
+  onDismiss: () => void
+}) {
+  return (
+    <tr className="save-error-row">
+      <td colSpan={colSpan}>
+        <div className="save-error">
+          <p role="alert">
+            Couldn't save {hoursFormat.format(failure.attempted)} h for <bdi>{name}</bdi>: {failure.reason}.
+            Showing the last saved {hoursFormat.format(lastSaved)} h.
+          </p>
+          <button type="button" onClick={onRetry}>
+            Retry<span className="visually-hidden"> saving {name}</span>
+          </button>
+          <button type="button" onClick={onDismiss}>
+            Dismiss<span className="visually-hidden"> error for {name}</span>
+          </button>
+        </div>
+      </td>
+    </tr>
+  )
+}
 
 const LEGEND_SAMPLES: Record<Status, string> = {
   over: '▲ 45 / 40',
