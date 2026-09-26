@@ -54,3 +54,14 @@ Terms are in `CONTEXT.md`. The allocation reading is in `docs/adr/0001`.
 - **Verified** in headless Chrome over CDP: the skeleton while the response was held; `docker compose stop api` then ›, which gave the stale banner; reload with the API down, which gave the error banner; `start api` then Retry, which recovered from both. The empty state was checked by rewriting the response to `people: []` in the browser, since the seed can't produce it.
 - **Not tested in code,** as in 01/02: ticket 07 owns the only tests.
 - **For ticket 04:** the stale fallback is watched only by a disabled observer. `invalidateQueries` (active-only by default) won't refetch it, so the save flow must write every `['capacity', …]` entry directly. `setQueryData` also resets `dataUpdatedAt`, so after an optimistic edit the stale banner's "loaded at" shows the edit time.
+
+## 2026-09-26: ticket 04, edit capacity
+
+- **Snapshots and rollback are per person, not per range.** The cache keeps the edited person's previous capacity for each range and restores only that person, so if one save fails it can't undo another person's save that succeeded in the meantime. Rollback is already wired in; the error UI (Retry/Dismiss) is ticket 05. Until then a failed save just snaps back with no message.
+- **Stale range responses:** the save records the range fetches it cancels, and when it settles it also cancels any fetch still in flight. It writes the server value into every cached range, then refetches those ranges. A range that finishes loading during the save gets overwritten by the server value when the save settles, so it doesn't need a refetch.
+- **`keepPreviousData` is a snapshot,** so an edit made while a new range loads didn't show in the dimmed grid. While loading, the grid now reads the previous range from the fallback observer (ticket 03), which watches the live cache entry.
+- **Client validation accepts a comma decimal** ("37,5"), since managers may type in a comma-decimal locale. The server only takes JSON numbers.
+- **Blur with an invalid value keeps the editor open** with its hint, instead of silently discarding the value. Esc is the way out.
+- **Saving disables the button with `aria-disabled`, not `disabled`,** so keyboard focus stays on it after Enter.
+- **Verified** in headless Chrome over CDP, with the PATCH held for 2 s: Dee 40 → 45 turns the week of 2026-01-05 from over to full, with "Saving…" on the row. Dee's editor won't open during the save, and Ana's still does. The result holds across ‹ (an uncached range), › and reload. 37.2, 200 and abc each show a hint and send nothing, and an unchanged value sends nothing. A range fetch held across a save and then released ends on the new value. curl covered the 400/404 paths. Dee and Ana were reset to 40 afterwards.
+- **Not tested in code,** as before: ticket 07 owns the tests.

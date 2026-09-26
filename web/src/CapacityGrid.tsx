@@ -1,6 +1,9 @@
-import { useMemo, useState, type ReactNode } from 'react'
-import { keepPreviousData, queryOptions, useQuery } from '@tanstack/react-query'
-import { fetchCapacity, type PersonCapacity } from './api'
+import { memo, useMemo, useState, type ReactNode } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import type { PersonCapacity } from './api'
+import { CapacityEditor } from './CapacityEditor'
+import { capacityQuery, useSaveCapacity } from './capacityCache'
+import { hoursFormat } from './format'
 import { expandRange, formatWeek, mondaysIn, sameRange, type Range } from './weeks'
 
 type Props = {
@@ -23,16 +26,8 @@ const STATUS_TEXT: Record<Status, string> = {
   under: 'Has room',
 }
 
-const hoursFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 })
 const byName = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
 const timeFormat = new Intl.DateTimeFormat(undefined, { timeStyle: 'short' })
-
-function capacityQuery(range: Range) {
-  return queryOptions({
-    queryKey: ['capacity', range.from, range.to],
-    queryFn: ({ signal }) => fetchCapacity(range.from, range.to, signal),
-  })
-}
 
 // CapacityGrid renders one row per person and one column per week, showing
 // how allocated each person is and making over-allocation obvious.
@@ -58,7 +53,9 @@ export function CapacityGrid({ from, to }: Props) {
   }
   const fallback = useQuery({ ...capacityQuery(lastGood ?? requested), enabled: false })
 
-  const data = current.data ?? fallback.data
+  // The placeholder is a snapshot, so a capacity saved while the new range
+  // loads would not show in it; the fallback observes the live cache entry.
+  const data = (current.isPlaceholderData ? undefined : current.data) ?? fallback.data
   const loadedAt = current.data ? current.dataUpdatedAt : fallback.dataUpdatedAt
   const stale = current.error !== null
   const updating = !stale && (current.isPlaceholderData || !current.data)
@@ -208,7 +205,8 @@ function LoadError({
   )
 }
 
-function PersonRow({ person }: { person: PersonCapacity }) {
+const PersonRow = memo(function PersonRow({ person }: { person: PersonCapacity }) {
+  const save = useSaveCapacity(person.id)
   const statuses = person.allocated.map((a) => statusOf(a, person.capacity))
   const weeksOver = statuses.filter((s) => s === 'over').length
 
@@ -217,7 +215,14 @@ function PersonRow({ person }: { person: PersonCapacity }) {
       <th scope="row" className="name">
         <span dir="auto">{person.name}</span>
       </th>
-      <td className="num">{hoursFormat.format(person.capacity)} h</td>
+      <td className="num">
+        <CapacityEditor
+          name={person.name}
+          capacity={person.capacity}
+          saving={save.isPending}
+          onSave={save.mutate}
+        />
+      </td>
       <td className="num">
         {weeksOver > 0 ? (
           <span className="over-count">
@@ -241,7 +246,7 @@ function PersonRow({ person }: { person: PersonCapacity }) {
       ))}
     </tr>
   )
-}
+})
 
 const LEGEND_SAMPLES: Record<Status, string> = {
   over: '▲ 45 / 40',

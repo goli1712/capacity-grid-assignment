@@ -1,7 +1,10 @@
-export type PersonCapacity = {
+export type Person = {
   id: number
   name: string
   capacity: number
+}
+
+export type PersonCapacity = Person & {
   allocated: number[]
 }
 
@@ -19,6 +22,16 @@ export async function fetchCapacity(
 ): Promise<CapacityResponse> {
   const params = new URLSearchParams({ from, to })
   const res = await fetch(`/api/capacity?${params}`, { signal })
+  if (!res.ok) throw new Error(await errorMessage(res))
+  return res.json()
+}
+
+export async function updateCapacity(id: number, capacity: number): Promise<Person> {
+  const res = await fetch(`/api/people/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ capacity }),
+  })
   if (!res.ok) throw new Error(await errorMessage(res))
   return res.json()
 }
